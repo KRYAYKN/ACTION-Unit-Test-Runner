@@ -26,10 +26,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: 🔧 Install BcContainerHelper with PowerShell 5.1
+    - name:  Install BcContainerHelper with PowerShell 5.1
       shell: powershell
       run: |
-        Write-Host "🔧 Installing BcContainerHelper module..."
+        Write-Host " Installing BcContainerHelper module..."
         
         # Gerekli TLS protokolü
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -47,7 +47,7 @@ runs:
     - name: Authenticate with Refresh Token
       shell: pwsh
       run: |
-        Write-Host "🔑 Authenticating to Business Central using refresh token..."
+        Write-Host " Authenticating to Business Central using refresh token..."
         
         $refreshToken = "${{ inputs.refresh-token }}"
         $tenantId = "${{ inputs.tenant-id }}"
