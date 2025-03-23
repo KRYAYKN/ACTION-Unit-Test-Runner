@@ -26,15 +26,23 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install BcContainerHelper
-      shell: pwsh
+    - name: 🔧 Install BcContainerHelper with PowerShell 5.1
+      shell: powershell
       run: |
         Write-Host "🔧 Installing BcContainerHelper module..."
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-        Install-Module BcContainerHelper -Force -SkipPublisherCheck
         
-        # Set TLS to 1.2
+        # Gerekli TLS protokolü
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        # NuGet provider kurulumu
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+
+        # BcContainerHelper modülünü kur
+        Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
+
+        # Modül yüklendi mi kontrol et
+        Get-Module -ListAvailable BcContainerHelper
+
 
     - name: Authenticate with Refresh Token
       shell: pwsh
