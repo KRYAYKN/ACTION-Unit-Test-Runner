@@ -135,4 +135,4 @@ runs:
         name: al-test-results
         path: "${{ github.workspace }}/TestResults.xml"
         retention-days: 30
-      shell: bash
+     
