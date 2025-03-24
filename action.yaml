@@ -50,7 +50,7 @@ runs:
         $authContext = Import-Clixml -Path "${{ github.workspace }}/authContext.xml"
 
         try {
-          $testResults = Run-TestsInBcContainer `
+          $testResults = Run-TestsInBcSaaS `
             -bcAuthContext $authContext `
             -environmentName "${{ inputs.sandbox-url }}" `
             -companyName "${{ inputs.company-name }}" `
