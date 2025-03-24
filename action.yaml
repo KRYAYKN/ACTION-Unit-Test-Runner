@@ -26,7 +26,7 @@ runs:
     - name: Install BcContainerHelper (PowerShell 5.1)
       shell: powershell
       run: |
-        Write-Host "🔧 Installing BcContainerHelper module..."
+        Write-Host "Installing BcContainerHelper module..."
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
@@ -35,7 +35,7 @@ runs:
     - name: Authenticate with Refresh Token
       shell: pwsh
       run: |
-        Write-Host "🔑 Authenticating to Business Central using refresh token..."
+        Write-Host "Authenticating to Business Central using refresh token..."
         $authContext = New-BcAuthContext -refreshToken "${{ inputs.refresh-token }}" -tenantId "${{ inputs.tenant-id }}"
         if (-not $authContext) {
           Write-Host "::error::Authentication failed!"
@@ -46,7 +46,7 @@ runs:
     - name: Run AL Tests
       shell: pwsh
       run: |
-        Write-Host "🧪 Running AL tests..."
+        Write-Host "Running AL tests..."
         $authContext = Import-Clixml -Path "${{ github.workspace }}/authContext.xml"
 
         try {
