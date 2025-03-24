@@ -19,99 +19,37 @@ inputs:
     description: "Name of the test suite to run"
     required: false
     default: "DEFAULT"
-  app-file-path:
-    description: "Path to the app file(s) to install"
-    required: true
 
 runs:
   using: "composite"
   steps:
-    - name:  Install BcContainerHelper with PowerShell 5.1
+    - name: Install BcContainerHelper (PowerShell 5.1)
       shell: powershell
       run: |
-        Write-Host " Installing BcContainerHelper module..."
-        
-        # Gerekli TLS protokolü
+        Write-Host "🔧 Installing BcContainerHelper module..."
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-        # NuGet provider kurulumu
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-
-        # BcContainerHelper modülünü kur
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
-
-        # Modül yüklendi mi kontrol et
         Get-Module -ListAvailable BcContainerHelper
-
 
     - name: Authenticate with Refresh Token
       shell: pwsh
       run: |
-        Write-Host " Authenticating to Business Central using refresh token..."
-        
-        $refreshToken = "${{ inputs.refresh-token }}"
-        $tenantId = "${{ inputs.tenant-id }}"
-        
-        $authContext = New-BcAuthContext -refreshToken $refreshToken -tenantId $tenantId
-        
+        Write-Host "🔑 Authenticating to Business Central using refresh token..."
+        $authContext = New-BcAuthContext -refreshToken "${{ inputs.refresh-token }}" -tenantId "${{ inputs.tenant-id }}"
         if (-not $authContext) {
-          Write-Host "::error::Failed to authenticate to Business Central"
+          Write-Host "::error::Authentication failed!"
           exit 1
         }
-        
-        Write-Host "✅ Authentication successful"
-        
-        # Store auth context for later use
         $authContext | Export-Clixml -Path "${{ github.workspace }}/authContext.xml"
-
-    - name: Publish and Install App
-      shell: pwsh
-      run: |
-        Write-Host "📦 Publishing and installing app..."
-        
-        # Import auth context
-        $authContext = Import-Clixml -Path "${{ github.workspace }}/authContext.xml"
-        
-        # Get all app files
-        $appFiles = Get-ChildItem -Path "${{ inputs.app-file-path }}" -File
-        
-        if ($appFiles.Count -eq 0) {
-          Write-Host "::error::No app files found at path: ${{ inputs.app-file-path }}"
-          exit 1
-        }
-        
-        foreach ($appFile in $appFiles) {
-          Write-Host "Installing app: $($appFile.Name)"
-          
-          try {
-            # Publish the app to the environment
-            Publish-BcContainerApp `
-              -authContext $authContext `
-              -bcEnvironmentName "${{ inputs.sandbox-url }}" `
-              -appFile $appFile.FullName `
-              -skipVerification `
-              -sync `
-              -install
-            
-            Write-Host "✅ App published and installed successfully: $($appFile.Name)"
-          }
-          catch {
-            Write-Host "::error::Failed to publish and install app: $($appFile.Name)"
-            Write-Host "::error::$_"
-            exit 1
-          }
-        }
 
     - name: Run AL Tests
       shell: pwsh
       run: |
         Write-Host "🧪 Running AL tests..."
-        
-        # Import auth context
         $authContext = Import-Clixml -Path "${{ github.workspace }}/authContext.xml"
-        
+
         try {
-          # Run the tests
           $testResults = Run-TestsInBcContainer `
             -authContext $authContext `
             -bcEnvironmentName "${{ inputs.sandbox-url }}" `
@@ -120,27 +58,23 @@ runs:
             -testCodeunit "*" `
             -xmlResultFile "${{ github.workspace }}/TestResults.xml" `
             -detailed
-          
+
           if ($testResults.TestResults.failures -gt 0) {
-            Write-Host "::error::$($testResults.TestResults.failures) tests failed"
+            Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
             exit 1
           }
-          
-          Write-Host "✅ All tests passed successfully!"
-          Write-Host "Tests run: $($testResults.TestResults.tests)"
-          Write-Host "Failures: $($testResults.TestResults.failures)"
-          Write-Host "Time: $($testResults.TestResults.time) seconds"
+
+          Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
         }
         catch {
-          Write-Host "::error::Failed to run tests"
+          Write-Host "::error::Test execution failed!"
           Write-Host "::error::$_"
           exit 1
         }
-    
+
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
       with:
         name: al-test-results
         path: "${{ github.workspace }}/TestResults.xml"
         retention-days: 30
-     
