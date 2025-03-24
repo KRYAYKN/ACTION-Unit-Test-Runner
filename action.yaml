@@ -56,7 +56,6 @@ runs:
             -companyName "CRONUS" `
             -testSuite "DEFAULT" `
             -testCodeunit "*" `
-            -xmlResultFile "${{ github.workspace }}/TestResults.xml" `
             -detailed
 
           if ($testResults.TestResults.failures -gt 0) {
