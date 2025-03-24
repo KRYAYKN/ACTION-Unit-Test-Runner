@@ -52,7 +52,7 @@ runs:
         try {
           $testResults = Run-TestsInBcContainer `
             -bcAuthContext $authContext `
-            -bcEnvironmentName "${{ inputs.sandbox-url }}" `
+            -environmentName "${{ inputs.sandbox-url }}" `
             -companyName "${{ inputs.company-name }}" `
             -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
