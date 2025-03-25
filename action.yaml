@@ -34,9 +34,15 @@ runs:
     
     - name: Run AL Tests in Container
       shell: pwsh
+      env:
+        BC_USERNAME: ${{ inputs.BC_USERNAME }}
+        BC_PASSWORD: ${{ inputs.BC_PASSWORD }}
       run: |
         Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
-        
+
+        if (-not $env:BC_USERNAME) { Write-Host "::error::BC_USERNAME is null" }
+        if (-not $env:BC_PASSWORD) { Write-Host "::error::BC_PASSWORD is null" }
+
         try {
           $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
           $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
@@ -48,15 +54,14 @@ runs:
             -credential $credential `
             -EnableTaskScheduler:$false `
             -detailed
-          
-          # Test sonuçlarını XML dosyasına kaydedin
+
           $testResults | Export-Clixml -Path "${{ github.workspace }}/TestResults.xml"
-          
+
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
             exit 1
           }
-          
+
           Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
         }
         catch {
@@ -64,10 +69,11 @@ runs:
           Write-Host "::error::$_"
           exit 1
         }
+
     
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
       with:
         name: al-test-results
-        path: "${{ github.workspace }}/TestResults.xml"
+        path: ${{ github.workspace }}/TestResults.xml
         retention-days: 30
