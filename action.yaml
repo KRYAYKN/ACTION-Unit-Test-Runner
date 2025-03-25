@@ -32,11 +32,15 @@ runs:
         Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
         
         try {
+          $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
+          $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
             -companyName "${{ inputs.company-name }}" `
             -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
+            -credential $credential `
+            -EnableTaskScheduler:$false `
             -detailed
           
           # Test sonuçlarını XML dosyasına kaydedin
