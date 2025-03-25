@@ -52,7 +52,6 @@ runs:
             -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -credential $credential `
-            -EnableTaskScheduler:$false `
             -detailed
 
           $testResults | Export-Clixml -Path "${{ github.workspace }}/TestResults.xml"
