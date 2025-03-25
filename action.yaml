@@ -1,15 +1,9 @@
-name: "AL Test Runner"
-description: "Runs AL unit tests on a Business Central development sandbox"
+name: "AL Test Runner" 
+description: "Runs AL unit tests on a Business Central container"
 
 inputs:
-  sandbox-url:
-    description: "URL of the Business Central development sandbox"
-    required: true
-  tenant-id:
-    description: "Azure AD tenant ID"
-    required: true
-  refresh-token:
-    description: "Azure AD refresh token"
+  container-name:
+    description: "Name of the Business Central container"
     required: true
   company-name:
     description: "Business Central company name to run tests in"
@@ -31,38 +25,28 @@ runs:
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
         Get-Module -ListAvailable BcContainerHelper
-
-    - name: Authenticate with Refresh Token
+    
+    - name: Run AL Tests in Container
       shell: pwsh
       run: |
-        Write-Host "Authenticating to Business Central using refresh token..."
-        $authContext = New-BcAuthContext -refreshToken "${{ inputs.refresh-token }}" -tenantId "${{ inputs.tenant-id }}"
-        if (-not $authContext) {
-          Write-Host "::error::Authentication failed!"
-          exit 1
-        }
-        $authContext | Export-Clixml -Path "${{ github.workspace }}/authContext.xml"
-
-    - name: Run AL Tests
-      shell: pwsh
-      run: |
-        Write-Host "Running AL tests..."
-        $authContext = Import-Clixml -Path "${{ github.workspace }}/authContext.xml"
-
+        Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
+        
         try {
           $testResults = Run-TestsInBcContainer `
-            -bcAuthContext $authContext `
-            -environment "${{ inputs.sandbox-url }}" `
-            -companyName "CRONUS" `
-            -testSuite "DEFAULT" `
+            -containerName "${{ inputs.container-name }}" `
+            -companyName "${{ inputs.company-name }}" `
+            -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -detailed
-
+          
+          # Test sonuçlarını XML dosyasına kaydedin
+          $testResults | Export-Clixml -Path "${{ github.workspace }}/TestResults.xml"
+          
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
             exit 1
           }
-
+          
           Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
         }
         catch {
@@ -70,7 +54,7 @@ runs:
           Write-Host "::error::$_"
           exit 1
         }
-
+    
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
       with:
