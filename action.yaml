@@ -13,6 +13,12 @@ inputs:
     description: "Name of the test suite to run"
     required: false
     default: "DEFAULT"
+  BC_USERNAME:
+    description: "Business Central username."
+    required: true
+  BC_PASSWORD:
+    description: "Business Central password."
+    required: true  
 
 runs:
   using: "composite"
