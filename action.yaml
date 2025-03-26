@@ -5,10 +5,6 @@ inputs:
   container-name:
     description: "Name of the Business Central container"
     required: true
-  company-name:
-    description: "Business Central company name to run tests in"
-    required: false
-    default: "CRONUS"
   test-suite-name:
     description: "Name of the test suite to run"
     required: false
