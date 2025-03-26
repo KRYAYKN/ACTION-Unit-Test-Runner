@@ -50,7 +50,9 @@ runs:
             -credential $credential `
             -detailed
 
-          $testResults | Export-Clixml -Path "${{ github.workspace }}/TestResults.xml"
+          # JUnit'e çeviriyoruz:
+          $testResults | ConvertTo-ALTestResultJUnitXml | Out-File -FilePath "${{ github.workspace }}/TestResults.xml" -Encoding utf8
+
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
