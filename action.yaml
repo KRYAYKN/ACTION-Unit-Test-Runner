@@ -1,4 +1,4 @@
-name: "AL Test Runner" 
+name: "AL Test Runner"
 description: "Runs AL unit tests on a Business Central container"
 
 inputs:
@@ -10,11 +10,11 @@ inputs:
     required: false
     default: "DEFAULT"
   BC_USERNAME:
-    description: "Business Central username."
+    description: "Business Central username"
     required: true
   BC_PASSWORD:
-    description: "Business Central password."
-    required: true  
+    description: "Business Central password"
+    required: true
 
 runs:
   using: "composite"
@@ -27,7 +27,7 @@ runs:
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
         Get-Module -ListAvailable BcContainerHelper
-    
+
     - name: Run AL Tests in Container
       shell: pwsh
       env:
@@ -36,12 +36,13 @@ runs:
       run: |
         Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
 
-        if (-not $env:BC_USERNAME) { Write-Host "::error::BC_USERNAME is null" }
-        if (-not $env:BC_PASSWORD) { Write-Host "::error::BC_PASSWORD is null" }
+        if (-not $env:BC_USERNAME) { Write-Host "::error::BC_USERNAME is null"; exit 1 }
+        if (-not $env:BC_PASSWORD) { Write-Host "::error::BC_PASSWORD is null"; exit 1 }
 
         try {
           $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
           $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
+
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
             -companyName "${{ inputs.company-name }}" `
@@ -50,9 +51,8 @@ runs:
             -credential $credential `
             -detailed
 
-          # JUnit'e çeviriyoruz:
+          # Convert to JUnit XML
           $testResults | ConvertTo-ALTestResultJUnitXml | Out-File -FilePath "${{ github.workspace }}/TestResults.xml" -Encoding utf8
-
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
@@ -67,7 +67,6 @@ runs:
           exit 1
         }
 
-    
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
       with:
