@@ -51,8 +51,37 @@ runs:
             -credential $credential `
             -detailed
 
-          # Convert to JUnit XML
-          $testResults | ConvertTo-ALTestResultJUnitXml | Out-File -FilePath "D:\a\Dev\Dev/TestResults.xml" -Encoding utf8
+          # Manual JUnit XML output (instead of ConvertTo-ALTestResultJUnitXml)
+          $xml = New-Object System.Xml.XmlDocument
+          $testResultsNode = $xml.CreateElement("testsuites")
+          $xml.AppendChild($testResultsNode) | Out-Null
+
+          $testsuite = $xml.CreateElement("testsuite")
+          $testsuite.SetAttribute("name", "AL Test Suite")
+          $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
+          $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
+          $testsuite.SetAttribute("errors", "0")
+          $testsuite.SetAttribute("time", $testResults.TestResults.time)
+          $testResultsNode.AppendChild($testsuite) | Out-Null
+
+          foreach ($result in $testResults.Results) {
+              $testcase = $xml.CreateElement("testcase")
+              $testcase.SetAttribute("classname", $result.TestCodeunit)
+              $testcase.SetAttribute("name", $result.TestFunction)
+              $testcase.SetAttribute("time", $result.Duration)
+
+              if ($result.Result -ne "Success") {
+                  $failure = $xml.CreateElement("failure")
+                  $failure.SetAttribute("message", $result.Message)
+                  $failure.InnerText = $result.Message
+                  $testcase.AppendChild($failure) | Out-Null
+              }
+
+              $testsuite.AppendChild($testcase) | Out-Null
+          }
+
+          $outputPath = "$env:GITHUB_WORKSPACE/TestResults.xml"
+          $xml.Save($outputPath)
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
@@ -66,6 +95,7 @@ runs:
           Write-Host "::error::$_"
           exit 1
         }
+
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
