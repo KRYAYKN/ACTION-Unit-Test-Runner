@@ -52,7 +52,7 @@ runs:
             -detailed
 
           # Convert to JUnit XML
-          $testResults | ConvertTo-ALTestResultJUnitXml | Out-File -FilePath "${{ github.workspace }}/TestResults.xml" -Encoding utf8
+          $testResults | ConvertTo-ALTestResultJUnitXml | Out-File -FilePath "D:\a\Dev\Dev/TestResults.xml" -Encoding utf8
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
