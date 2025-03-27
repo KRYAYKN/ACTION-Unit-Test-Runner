@@ -1,5 +1,5 @@
 name: "AL Test Runner"
-description: "Runs AL unit tests on a Business Central container"
+description: "Runs AL unit tests on a Business Central container with debug logs"
 
 inputs:
   container-name:
@@ -28,14 +28,55 @@ runs:
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
         Get-Module -ListAvailable BcContainerHelper
 
-    - name: Debug Container Status
+    - name: Check Container Status
       shell: pwsh
       run: |
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
-        docker ps -a | Select-String -Pattern "${{ inputs.container-name }}"
-        if ($LASTEXITCODE -ne 0) { Write-Error "::error::Container not found or not running"; exit 1 }
+        docker ps -a | Select-String '${{ inputs.container-name }}'
 
-    - name: Run AL Tests in Container with Debug
+    - name: Debug - List Companies
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-NAVCompany -ServerInstance BC
+        }
+
+    - name: Debug - Check Test Suites
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-BCContainerTestSuite
+        }
+
+    - name: Debug - Check Test Toolkit
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -like "*Test*" }
+        }
+
+    - name: Debug - Check Test Codeunits
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-BCTestCodeunit -ServerInstance BC
+        }
+
+    - name: Debug - Check Services
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-Service -Name "*BC*"
+        }
+
+    - name: Debug - Check Event Logs
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Get-EventLog -LogName Application -Newest 100
+        }
+
+    - name: Run AL Tests in Container
       shell: pwsh
       env:
         BC_USERNAME: ${{ inputs.BC_USERNAME }}
@@ -68,40 +109,6 @@ runs:
           # Debug Test Results
           Write-Host "=== Test Results Debug ==="
           Write-Output $testResults | Format-List
-
-          # Manual JUnit XML output
-          $xml = New-Object System.Xml.XmlDocument
-          $testResultsNode = $xml.CreateElement("testsuites")
-          $xml.AppendChild($testResultsNode) | Out-Null
-
-          $testsuite = $xml.CreateElement("testsuite")
-          $testsuite.SetAttribute("name", "AL Test Suite")
-          $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
-          $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
-          $testsuite.SetAttribute("errors", "0")
-          $testsuite.SetAttribute("time", $testResults.TestResults.time)
-          $testResultsNode.AppendChild($testsuite) | Out-Null
-
-          foreach ($result in $testResults.Results) {
-              $testcase = $xml.CreateElement("testcase")
-              $testcase.SetAttribute("classname", $result.TestCodeunit)
-              $testcase.SetAttribute("name", $result.TestFunction)
-              $testcase.SetAttribute("time", $result.Duration)
-
-              if ($result.Result -ne "Success") {
-                  $failure = $xml.CreateElement("failure")
-                  $failure.SetAttribute("message", $result.Message)
-                  $failure.InnerText = $result.Message
-                  $testcase.AppendChild($failure) | Out-Null
-              }
-
-              $testsuite.AppendChild($testcase) | Out-Null
-          }
-
-          $outputPath = "${{ github.workspace }}/TestResults.xml"
-          $xml.Save($outputPath)
-
-          Write-Host "✅ Test Results Saved at $outputPath"
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
