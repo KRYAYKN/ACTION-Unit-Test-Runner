@@ -41,12 +41,6 @@ runs:
             Get-NAVCompany -ServerInstance BC -Tenant default
         }
 
-    - name: Debug - Check Test Suites
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-BCContainerTestSuite -Tenant default
-        }
 
     - name: Debug - Check Test Toolkit
       shell: pwsh
@@ -96,7 +90,6 @@ runs:
 
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
-            -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -credential $credential `
             -detailed `
