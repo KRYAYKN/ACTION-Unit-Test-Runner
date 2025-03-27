@@ -1,5 +1,5 @@
-name: "AL Test Runner"
-description: "Runs AL unit tests on a Business Central container with dynamic test suite detection"
+name: "AL Unit Test Runner"
+description: "Runs AL unit tests on a Business Central container and reports results"
 
 inputs:
   container-name:
@@ -15,7 +15,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install BcContainerHelper (PowerShell 5.1)
+    - name: Install BcContainerHelper
       shell: powershell
       run: |
         Write-Host "Installing BcContainerHelper module..."
@@ -30,43 +30,42 @@ runs:
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
-    - name: Detect Test Suite
+    - name: Check for Test Runner and Toolkit
       shell: pwsh
       run: |
-        Write-Host "Detecting test suite in container..."
-        $testSuiteName = Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Import-Module BCAppTest
-            $suites = Get-TestSuite -ServerInstance BC -Tenant default
-            if ($suites) {
-                $suites.Name
-            } else {
-                Write-Output "DEFAULT"
-            }
+        Write-Host "Checking for Test Runner and Test Toolkit..."
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+          $testRunner = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
+          $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'AI Test Toolkit' }
+          
+          if (-not $testRunner) {
+            Write-Host "::error::Test Runner not found! Please install Test Runner."
+            exit 1
+          }
+
+          if (-not $testToolkit) {
+            Write-Host "::error::AI Test Toolkit not found! Please install AI Test Toolkit."
+            exit 1
+          }
+
+          Write-Host "✅ Test Runner and Test Toolkit found."
         }
 
-        if (-not $testSuiteName) {
-          Write-Host "::error::No test suites found. Using DEFAULT test suite."
-          $testSuiteName = "DEFAULT"
-        }
-
-        Write-Host "Detected Test Suite: $testSuiteName"
-        echo "TEST_SUITE_NAME=$testSuiteName" >> $env:GITHUB_ENV
-
-    - name: Run AL Tests
+    - name: Run AL Tests in Container
       shell: pwsh
       env:
         BC_USERNAME: ${{ inputs.BC_USERNAME }}
         BC_PASSWORD: ${{ inputs.BC_PASSWORD }}
       run: |
-        Write-Host "Running AL tests using Run-TestsInBcContainer..."
+        Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
 
         $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
         $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
 
-        Write-Host "Executing tests with Run-TestsInBcContainer in suite: $env:TEST_SUITE_NAME"
+        Write-Host "Executing tests with Run-TestsInBcContainer..."
         $testResults = Run-TestsInBcContainer `
           -containerName "${{ inputs.container-name }}" `
-          -testSuite "$env:TEST_SUITE_NAME" `
+          -testSuite "DEFAULT" `
           -testCodeunit "*" `
           -credential $credential `
           -detailed `
@@ -77,9 +76,38 @@ runs:
           exit 1
         }
 
-        # Debug Test Results
-        Write-Host "=== Test Results Debug ==="
-        Write-Output $testResults | Format-List
+        # Generate JUnit XML
+        Write-Host "Generating JUnit XML Test Results..."
+        $xml = New-Object System.Xml.XmlDocument
+        $testResultsNode = $xml.CreateElement("testsuites")
+        $xml.AppendChild($testResultsNode) | Out-Null
+
+        $testsuite = $xml.CreateElement("testsuite")
+        $testsuite.SetAttribute("name", "AL Test Suite")
+        $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
+        $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
+        $testsuite.SetAttribute("errors", "0")
+        $testsuite.SetAttribute("time", $testResults.TestResults.time)
+        $testResultsNode.AppendChild($testsuite) | Out-Null
+
+        foreach ($result in $testResults.Results) {
+          $testcase = $xml.CreateElement("testcase")
+          $testcase.SetAttribute("classname", $result.TestCodeunit)
+          $testcase.SetAttribute("name", $result.TestFunction)
+          $testcase.SetAttribute("time", $result.Duration)
+
+          if ($result.Result -ne "Success") {
+            $failure = $xml.CreateElement("failure")
+            $failure.SetAttribute("message", $result.Message)
+            $failure.InnerText = $result.Message
+            $testcase.AppendChild($failure) | Out-Null
+          }
+
+          $testsuite.AppendChild($testcase) | Out-Null
+        }
+
+        $outputPath = "${{ github.workspace }}/TestResults.xml"
+        $xml.Save($outputPath)
 
         if ($testResults.TestResults.failures -gt 0) {
           Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
