@@ -1,14 +1,10 @@
 name: "AL Test Runner"
-description: "Runs AL unit tests on a Business Central container with debug logs using Run-TestsInBcContainer"
+description: "Runs AL unit tests on a Business Central container with dynamic test suite detection"
 
 inputs:
   container-name:
     description: "Name of the Business Central container"
     required: true
-  test-suite-name:
-    description: "Name of the test suite to run"
-    required: false
-    default: "DEFAULT"
   BC_USERNAME:
     description: "Business Central username"
     required: true
@@ -34,98 +30,63 @@ runs:
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
-    - name: Debug - List Companies
+    - name: Detect Test Suite
       shell: pwsh
       run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-NAVCompany -ServerInstance BC -Tenant default
+        Write-Host "Detecting test suite in container..."
+        $testSuiteName = Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+            Import-Module BCAppTest
+            $suites = Get-TestSuite -ServerInstance BC -Tenant default
+            if ($suites) {
+                $suites.Name
+            } else {
+                Write-Output "DEFAULT"
+            }
         }
 
-    - name: Debug - Verify Test Toolkit
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -like "*Test*" }
+        if (-not $testSuiteName) {
+          Write-Host "::error::No test suites found. Using DEFAULT test suite."
+          $testSuiteName = "DEFAULT"
         }
 
-    - name: Run AL Tests using Run-TestsInBcContainer
+        Write-Host "Detected Test Suite: $testSuiteName"
+        echo "TEST_SUITE_NAME=$testSuiteName" >> $env:GITHUB_ENV
+
+    - name: Run AL Tests
       shell: pwsh
       env:
         BC_USERNAME: ${{ inputs.BC_USERNAME }}
         BC_PASSWORD: ${{ inputs.BC_PASSWORD }}
       run: |
-        Write-Host "Running AL tests in container ${{ inputs.container-name }} using Run-TestsInBcContainer..."
+        Write-Host "Running AL tests using Run-TestsInBcContainer..."
 
-        if (-not $env:BC_USERNAME) { Write-Host "::error::BC_USERNAME is null"; exit 1 }
-        if (-not $env:BC_PASSWORD) { Write-Host "::error::BC_PASSWORD is null"; exit 1 }
+        $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
+        $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
 
-        try {
-          $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
-          $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
+        Write-Host "Executing tests with Run-TestsInBcContainer in suite: $env:TEST_SUITE_NAME"
+        $testResults = Run-TestsInBcContainer `
+          -containerName "${{ inputs.container-name }}" `
+          -testSuite "$env:TEST_SUITE_NAME" `
+          -testCodeunit "*" `
+          -credential $credential `
+          -detailed `
+          -tenant default
 
-          Write-Host "Executing tests with Run-TestsInBcContainer..."
-          $testResults = Run-TestsInBcContainer `
-            -containerName "${{ inputs.container-name }}" `
-            -testSuite "${{ inputs.test-suite-name }}" `
-            -testCodeunit "*" `
-            -credential $credential `
-            -detailed `
-            -tenant default
-
-          if (-not $testResults) {
-            Write-Host "::error::No test results found! Please check if tests were executed correctly."
-            exit 1
-          }
-
-          # Debug Test Results
-          Write-Host "=== Test Results Debug ==="
-          Write-Output $testResults | Format-List
-
-          # Generate JUnit XML
-          Write-Host "Generating JUnit XML Test Results..."
-          $xml = New-Object System.Xml.XmlDocument
-          $testResultsNode = $xml.CreateElement("testsuites")
-          $xml.AppendChild($testResultsNode) | Out-Null
-
-          $testsuite = $xml.CreateElement("testsuite")
-          $testsuite.SetAttribute("name", "AL Test Suite")
-          $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
-          $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
-          $testsuite.SetAttribute("errors", "0")
-          $testsuite.SetAttribute("time", $testResults.TestResults.time)
-          $testResultsNode.AppendChild($testsuite) | Out-Null
-
-          foreach ($result in $testResults.Results) {
-              $testcase = $xml.CreateElement("testcase")
-              $testcase.SetAttribute("classname", $result.TestCodeunit)
-              $testcase.SetAttribute("name", $result.TestFunction)
-              $testcase.SetAttribute("time", $result.Duration)
-
-              if ($result.Result -ne "Success") {
-                  $failure = $xml.CreateElement("failure")
-                  $failure.SetAttribute("message", $result.Message)
-                  $failure.InnerText = $result.Message
-                  $testcase.AppendChild($failure) | Out-Null
-              }
-
-              $testsuite.AppendChild($testcase) | Out-Null
-          }
-
-          $outputPath = "${{ github.workspace }}/TestResults.xml"
-          $xml.Save($outputPath)
-
-          if ($testResults.TestResults.failures -gt 0) {
-            Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
-            exit 1
-          }
-
-          Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
-        }
-        catch {
-          Write-Host "::error::Test execution failed!"
-          Write-Host "::error::$_"
+        if (-not $testResults) {
+          Write-Host "::error::No test results found! Please check if tests were executed correctly."
           exit 1
         }
+
+        # Debug Test Results
+        Write-Host "=== Test Results Debug ==="
+        Write-Output $testResults | Format-List
+
+        if ($testResults.TestResults.failures -gt 0) {
+          Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
+          exit 1
+        }
+
+        Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
