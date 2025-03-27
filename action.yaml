@@ -28,7 +28,14 @@ runs:
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
         Get-Module -ListAvailable BcContainerHelper
 
-    - name: Run AL Tests in Container
+    - name: Debug Container Status
+      shell: pwsh
+      run: |
+        Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
+        docker ps -a | Select-String -Pattern "${{ inputs.container-name }}"
+        if ($LASTEXITCODE -ne 0) { Write-Error "::error::Container not found or not running"; exit 1 }
+
+    - name: Run AL Tests in Container with Debug
       shell: pwsh
       env:
         BC_USERNAME: ${{ inputs.BC_USERNAME }}
@@ -43,6 +50,9 @@ runs:
           $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
           $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
 
+          Write-Host "Checking Test Suite: ${{ inputs.test-suite-name }}"
+          Write-Host "Executing Run-TestsInBcContainer command..."
+
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
             -testSuite "${{ inputs.test-suite-name }}" `
@@ -51,9 +61,13 @@ runs:
             -detailed
 
           if (-not $testResults) {
-            Write-Host "::error::No test results found!"
+            Write-Host "::error::No test results found! Please check if tests were executed correctly."
             exit 1
           }
+
+          # Debug Test Results
+          Write-Host "=== Test Results Debug ==="
+          Write-Output $testResults | Format-List
 
           # Manual JUnit XML output
           $xml = New-Object System.Xml.XmlDocument
@@ -86,6 +100,8 @@ runs:
 
           $outputPath = "${{ github.workspace }}/TestResults.xml"
           $xml.Save($outputPath)
+
+          Write-Host "✅ Test Results Saved at $outputPath"
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
