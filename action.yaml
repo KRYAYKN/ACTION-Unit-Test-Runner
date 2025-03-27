@@ -1,5 +1,5 @@
 name: "AL Test Runner"
-description: "Runs AL unit tests on a Business Central container with debug logs"
+description: "Runs AL unit tests on a Business Central container with debug logs using Run-TestsInBcContainer"
 
 inputs:
   container-name:
@@ -41,42 +41,20 @@ runs:
             Get-NAVCompany -ServerInstance BC -Tenant default
         }
 
-
-    - name: Debug - Check Test Toolkit
+    - name: Debug - Verify Test Toolkit
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
             Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -like "*Test*" }
         }
 
-    - name: Debug - Check Test Codeunits
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-BCTestCodeunit -ServerInstance BC -Tenant default
-        }
-
-    - name: Debug - Check Services
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-Service -Name "*BC*"
-        }
-
-    - name: Debug - Check Event Logs
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-EventLog -LogName Application -Newest 100
-        }
-
-    - name: Run AL Tests in Container
+    - name: Run AL Tests using Run-TestsInBcContainer
       shell: pwsh
       env:
         BC_USERNAME: ${{ inputs.BC_USERNAME }}
         BC_PASSWORD: ${{ inputs.BC_PASSWORD }}
       run: |
-        Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
+        Write-Host "Running AL tests in container ${{ inputs.container-name }} using Run-TestsInBcContainer..."
 
         if (-not $env:BC_USERNAME) { Write-Host "::error::BC_USERNAME is null"; exit 1 }
         if (-not $env:BC_PASSWORD) { Write-Host "::error::BC_PASSWORD is null"; exit 1 }
@@ -85,15 +63,14 @@ runs:
           $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
           $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
 
-          Write-Host "Checking Test Suite: ${{ inputs.test-suite-name }}"
-          Write-Host "Executing Run-TestsInBcContainer command..."
-
+          Write-Host "Executing tests with Run-TestsInBcContainer..."
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
+            -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -credential $credential `
             -detailed `
-            -Tenant default
+            -tenant default
 
           if (-not $testResults) {
             Write-Host "::error::No test results found! Please check if tests were executed correctly."
@@ -103,6 +80,39 @@ runs:
           # Debug Test Results
           Write-Host "=== Test Results Debug ==="
           Write-Output $testResults | Format-List
+
+          # Generate JUnit XML
+          Write-Host "Generating JUnit XML Test Results..."
+          $xml = New-Object System.Xml.XmlDocument
+          $testResultsNode = $xml.CreateElement("testsuites")
+          $xml.AppendChild($testResultsNode) | Out-Null
+
+          $testsuite = $xml.CreateElement("testsuite")
+          $testsuite.SetAttribute("name", "AL Test Suite")
+          $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
+          $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
+          $testsuite.SetAttribute("errors", "0")
+          $testsuite.SetAttribute("time", $testResults.TestResults.time)
+          $testResultsNode.AppendChild($testsuite) | Out-Null
+
+          foreach ($result in $testResults.Results) {
+              $testcase = $xml.CreateElement("testcase")
+              $testcase.SetAttribute("classname", $result.TestCodeunit)
+              $testcase.SetAttribute("name", $result.TestFunction)
+              $testcase.SetAttribute("time", $result.Duration)
+
+              if ($result.Result -ne "Success") {
+                  $failure = $xml.CreateElement("failure")
+                  $failure.SetAttribute("message", $result.Message)
+                  $failure.InnerText = $result.Message
+                  $testcase.AppendChild($failure) | Out-Null
+              }
+
+              $testsuite.AppendChild($testcase) | Out-Null
+          }
+
+          $outputPath = "${{ github.workspace }}/TestResults.xml"
+          $xml.Save($outputPath)
 
           if ($testResults.TestResults.failures -gt 0) {
             Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
