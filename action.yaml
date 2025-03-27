@@ -45,13 +45,17 @@ runs:
 
           $testResults = Run-TestsInBcContainer `
             -containerName "${{ inputs.container-name }}" `
-            -companyName "${{ inputs.company-name }}" `
             -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -credential $credential `
             -detailed
 
-          # Manual JUnit XML output (instead of ConvertTo-ALTestResultJUnitXml)
+          if (-not $testResults) {
+            Write-Host "::error::No test results found!"
+            exit 1
+          }
+
+          # Manual JUnit XML output
           $xml = New-Object System.Xml.XmlDocument
           $testResultsNode = $xml.CreateElement("testsuites")
           $xml.AppendChild($testResultsNode) | Out-Null
@@ -80,7 +84,7 @@ runs:
               $testsuite.AppendChild($testcase) | Out-Null
           }
 
-          $outputPath = "$env:GITHUB_WORKSPACE/TestResults.xml"
+          $outputPath = "${{ github.workspace }}/TestResults.xml"
           $xml.Save($outputPath)
 
           if ($testResults.TestResults.failures -gt 0) {
@@ -95,7 +99,6 @@ runs:
           Write-Host "::error::$_"
           exit 1
         }
-
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
