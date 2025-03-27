@@ -38,14 +38,14 @@ runs:
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-NAVCompany -ServerInstance BC
+            Get-NAVCompany -ServerInstance BC -Tenant default
         }
 
     - name: Debug - Check Test Suites
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-BCContainerTestSuite
+            Get-BCContainerTestSuite -Tenant default
         }
 
     - name: Debug - Check Test Toolkit
@@ -59,7 +59,7 @@ runs:
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-            Get-BCTestCodeunit -ServerInstance BC
+            Get-BCTestCodeunit -ServerInstance BC -Tenant default
         }
 
     - name: Debug - Check Services
@@ -99,7 +99,8 @@ runs:
             -testSuite "${{ inputs.test-suite-name }}" `
             -testCodeunit "*" `
             -credential $credential `
-            -detailed
+            -detailed `
+            -Tenant default
 
           if (-not $testResults) {
             Write-Host "::error::No test results found! Please check if tests were executed correctly."
