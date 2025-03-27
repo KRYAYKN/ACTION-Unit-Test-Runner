@@ -51,6 +51,34 @@ runs:
           Write-Host "✅ Test Runner and Test Toolkit found."
         }
 
+    - name: Ensure Test Suite Exists
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+          Import-Module BCAppTest
+          if (-not (Get-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT")) {
+            Write-Host "Creating Test Suite 'DEFAULT'..."
+            New-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT"
+          } else {
+            Write-Host "✅ Test Suite 'DEFAULT' already exists."
+          }
+        }
+
+    - name: Ensure Test Codeunits Are Assigned
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+          Import-Module BCAppTest
+          $testSuite = Get-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT"
+          $codeunits = Get-BCTestCodeunit -ServerInstance BC -Tenant default
+          foreach ($codeunit in $codeunits) {
+            if (-not (Get-TestSuiteCodeunit -ServerInstance BC -Tenant default -TestSuiteId $testSuite.Id -CodeunitId $codeunit.Id)) {
+              Write-Host "Adding codeunit $($codeunit.Id) to Test Suite..."
+              Add-TestSuiteCodeunit -ServerInstance BC -Tenant default -TestSuiteId $testSuite.Id -CodeunitId $codeunit.Id
+            }
+          }
+        }
+
     - name: Run AL Tests in Container
       shell: pwsh
       env:
