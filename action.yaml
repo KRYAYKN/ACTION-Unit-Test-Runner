@@ -30,25 +30,29 @@ runs:
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
-    - name: Check for Test Runner and Toolkit
+    - name: Ensure Test Toolkit is Installed
       shell: pwsh
       run: |
-        Write-Host "Checking for Test Runner and Test Toolkit..."
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          $testRunner = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
           $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'AI Test Toolkit' }
-          
-          if (-not $testRunner) {
-            Write-Host "::error::Test Runner not found! Please install Test Runner."
-            exit 1
-          }
-
           if (-not $testToolkit) {
-            Write-Host "::error::AI Test Toolkit not found! Please install AI Test Toolkit."
-            exit 1
+            Write-Host "Installing AI Test Toolkit..."
+            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" -tenant default
+          } else {
+            Write-Host "✅ AI Test Toolkit is already installed."
           }
+        }
 
-          Write-Host "✅ Test Runner and Test Toolkit found."
+    - name: Ensure BCAppTest Module is Available
+      shell: pwsh
+      run: |
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+          if (-not (Get-Module -ListAvailable -Name BCAppTest)) {
+            Write-Host "::error::BCAppTest module not found! Ensure Test Toolkit is correctly installed."
+            exit 1
+          } else {
+            Write-Host "✅ BCAppTest module is available."
+          }
         }
 
     - name: Ensure Test Suite Exists
@@ -104,7 +108,6 @@ runs:
           exit 1
         }
 
-        # Generate JUnit XML
         Write-Host "Generating JUnit XML Test Results..."
         $xml = New-Object System.Xml.XmlDocument
         $testResultsNode = $xml.CreateElement("testsuites")
