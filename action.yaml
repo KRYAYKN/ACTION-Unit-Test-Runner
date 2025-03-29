@@ -43,23 +43,10 @@ runs:
           }
         }
 
-    - name: Ensure BCAppTest Module is Available
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          if (-not (Get-Module -ListAvailable -Name BCAppTest)) {
-            Write-Host "::error::BCAppTest module not found! Ensure Test Toolkit is correctly installed."
-            exit 1
-          } else {
-            Write-Host "✅ BCAppTest module is available."
-          }
-        }
-
     - name: Ensure Test Suite Exists
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          Import-Module BCAppTest
           if (-not (Get-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT")) {
             Write-Host "Creating Test Suite 'DEFAULT'..."
             New-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT"
@@ -68,19 +55,12 @@ runs:
           }
         }
 
-    - name: Ensure Test Codeunits Are Assigned
+    - name: Get Tests from Container
       shell: pwsh
       run: |
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          Import-Module BCAppTest
-          $testSuite = Get-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT"
-          $codeunits = Get-BCTestCodeunit -ServerInstance BC -Tenant default
-          foreach ($codeunit in $codeunits) {
-            if (-not (Get-TestSuiteCodeunit -ServerInstance BC -Tenant default -TestSuiteId $testSuite.Id -CodeunitId $codeunit.Id)) {
-              Write-Host "Adding codeunit $($codeunit.Id) to Test Suite..."
-              Add-TestSuiteCodeunit -ServerInstance BC -Tenant default -TestSuiteId $testSuite.Id -CodeunitId $codeunit.Id
-            }
-          }
+          Write-Host "Fetching available tests from container..."
+          Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT"
         }
 
     - name: Run AL Tests in Container
@@ -94,11 +74,10 @@ runs:
         $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
         $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
 
-        Write-Host "Executing tests with Run-TestsInBcContainer..."
-        $testResults = Run-TestsInBcContainer `
+        Write-Host "Executing tests with Run-TestsInNavContainer..."
+        $testResults = Run-TestsInNavContainer `
           -containerName "${{ inputs.container-name }}" `
           -testSuite "DEFAULT" `
-          -testCodeunit "*" `
           -credential $credential `
           -detailed `
           -tenant default
