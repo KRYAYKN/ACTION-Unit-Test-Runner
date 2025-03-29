@@ -30,240 +30,49 @@ runs:
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
-    - name: Ensure Test Toolkit is Installed
+    - name: Publish App to Container
       shell: pwsh
       run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'AI Test Toolkit' }
-          if (-not $testToolkit) {
-            Write-Host "Installing AI Test Toolkit..."
-            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" -tenant default
-          } else {
-            Write-Host "✅ AI Test Toolkit is already installed."
-          }
+        Write-Host "Publishing app to container..."
+        $appPath = Get-ChildItem -Path "${{ github.workspace }}/Build_StagingDirectory" -Filter "*.app" | Select-Object -First 1
+        if (-not $appPath) {
+          Write-Host "Error: No .app file found in the staging directory."
+          exit 1
         }
+        Write-Host "Found app file: $($appPath.FullName)"
 
-    # Debug: List available modules and commands
-    - name: Debug - List available modules and commands
+        $password = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($env:BC_USERNAME, $password)
+
+        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $appPath.FullName -sync -install
+
+    - name: Get Available Tests
       shell: pwsh
       run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          Write-Host "Listing available modules..."
-          Get-Module -ListAvailable | Where-Object { $_.Name -like '*Nav*' -or $_.Name -like '*BC*' -or $_.Name -like '*Test*' } | Format-Table -Property Name, Version, ModuleBase
-          
-          Write-Host "Listing available test-related commands..."
-          Get-Command -Module "Microsoft.Dynamics.Nav.Apps.Test", "Microsoft.Dynamics.Nav.Apps.Tools" -ErrorAction SilentlyContinue | Format-Table -Property Name
-          
-          Write-Host "Checking if Microsoft.Dynamics.Nav.Apps.Test module exists..."
-          $testModule = Get-Module -ListAvailable "Microsoft.Dynamics.Nav.Apps.Test" -ErrorAction SilentlyContinue
-          if ($testModule) {
-            Write-Host "✅ Microsoft.Dynamics.Nav.Apps.Test module found at: $($testModule.ModuleBase)"
-          } else {
-            Write-Host "❌ Microsoft.Dynamics.Nav.Apps.Test module not found!"
-            
-            # Look for all test-related modules
-            Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "Microsoft.Dynamics.Nav.Apps.Test.dll" -ErrorAction SilentlyContinue | 
-            ForEach-Object {
-              Write-Host "Found Test DLL at: $($_.FullName)"
-            }
-          }
-        }
+        Write-Host "Fetching available tests from container using Get-TestsFromNavContainer..."
+        Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT"
 
-    # Import required test modules
-    - name: Import Test Modules
+    - name: Run AL Tests
       shell: pwsh
       run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          Write-Host "Importing Test Modules..."
-          # Try to import all possible modules that might contain test functionality
-          Import-Module "Microsoft.Dynamics.Nav.Apps.Test" -ErrorAction SilentlyContinue
-          Import-Module "Microsoft.Dynamics.Nav.TestAutomation" -ErrorAction SilentlyContinue
-          Import-Module (Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "Microsoft.Dynamics.Nav.Apps.Test.dll" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName -ErrorAction SilentlyContinue
-          
-          # Check what modules are loaded
-          Get-Module | Where-Object { $_.Name -like '*Nav*' -or $_.Name -like '*BC*' -or $_.Name -like '*Test*' } | Format-Table -Property Name, Version
-        }
+        Write-Host "Running AL tests using Run-TestsInNavContainer..."
 
-    - name: Ensure Test Suite Exists
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          # Try to use alternative methods if Get-TestSuite is not available
-          try {
-            if (-not (Get-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT" -ErrorAction Stop)) {
-              Write-Host "Creating Test Suite 'DEFAULT'..."
-              New-TestSuite -ServerInstance BC -Tenant default -Name "DEFAULT"
-            } else {
-              Write-Host "✅ Test Suite 'DEFAULT' already exists."
-            }
-          }
-          catch {
-            Write-Host "Warning: Get-TestSuite command not found. Using alternative approach."
-            # Check if test suite exists using database query or alternative method
-            # This is a fallback in case the standard commands are not available
-            $testSuiteExists = $false
-            
-            try {
-              # Try to use NAV cmdlets to check if test suite exists
-              $testSuiteExists = Invoke-NAVSQLCommand -ServerInstance BC -SQLCommand "SELECT TOP 1 * FROM [dbo].[Test Suite] WHERE [Name] = 'DEFAULT'" -ErrorAction SilentlyContinue
-            }
-            catch {
-              Write-Host "Unable to check if test suite exists using SQL query."
-            }
-            
-            if (-not $testSuiteExists) {
-              Write-Host "Creating DEFAULT test suite using alternative method..."
-              try {
-                # Try to create test suite using NAV cmdlets
-                Invoke-NAVSQLCommand -ServerInstance BC -SQLCommand "INSERT INTO [dbo].[Test Suite] ([Name]) VALUES ('DEFAULT')" -ErrorAction SilentlyContinue
-                Write-Host "Created test suite using SQL command."
-              }
-              catch {
-                Write-Host "Warning: Unable to create test suite. Tests will run without test suite."
-              }
-            }
-          }
-        }
+        $password = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($env:BC_USERNAME, $password)
 
-    - name: Get Tests from Container
-      shell: pwsh
-      run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          Write-Host "Fetching available tests from container..."
-          try {
-            Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -ErrorAction Stop
-          }
-          catch {
-            Write-Host "Warning: Get-TestsFromNavContainer failed. Using alternative approach to find tests."
-            # Alternative approach to list tests
-            $testCodeunits = Get-NAVAppInfo -ServerInstance BC | 
-                            Where-Object { $_.Name -like '*Test*' } | 
-                            ForEach-Object { Get-NAVAppObjectMetadata -ServerInstance BC -AppName $_.Name -ObjectType Codeunit } |
-                            Where-Object { $_.Name -like '*Test*' }
-            
-            Write-Host "Found $($testCodeunits.Count) test codeunits through app metadata."
-            $testCodeunits | Format-Table -Property ID, Name
-          }
-        }
-
-    - name: Run AL Tests in Container
-      shell: pwsh
-      env:
-        BC_USERNAME: ${{ inputs.BC_USERNAME }}
-        BC_PASSWORD: ${{ inputs.BC_PASSWORD }}
-      run: |
-        Write-Host "Running AL tests in container ${{ inputs.container-name }}..."
-
-        $securePassword = ConvertTo-SecureString $env:BC_PASSWORD -AsPlainText -Force
-        $credential = New-Object PSCredential($env:BC_USERNAME, $securePassword)
-
-        Write-Host "Executing tests with Run-TestsInNavContainer..."
-        try {
-          $testResults = Run-TestsInNavContainer `
-            -containerName "${{ inputs.container-name }}" `
-            -testSuite "DEFAULT" `
-            -credential $credential `
-            -detailed `
-            -tenant default
-        }
-        catch {
-          Write-Host "Error running tests: $_"
-          Write-Host "Stack Trace: $($_.ScriptStackTrace)"
-          
-          # Try alternative approach
-          Write-Host "Trying alternative approach to run tests..."
-          try {
-            $testResults = Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-              param($credential)
-              
-              $testCodeunits = Get-NAVAppInfo -ServerInstance BC | 
-                            Where-Object { $_.Name -like '*Test*' } | 
-                            ForEach-Object { Get-NAVAppObjectMetadata -ServerInstance BC -AppName $_.Name -ObjectType Codeunit } |
-                            Where-Object { $_.Name -like '*Test*' }
-              
-              $results = New-Object System.Collections.ArrayList
-              foreach ($codeunit in $testCodeunits) {
-                Write-Host "Running tests in codeunit $($codeunit.Name) ($($codeunit.ID))..."
-                try {
-                  $codeunitResults = Invoke-NavContainerCodeunit -containerName "${{ inputs.container-name }}" -credential $credential -codeunitId $codeunit.ID -tenant default -ErrorAction Continue
-                  # Process results
-                  $null = $results.Add(@{
-                    CodeunitName = $codeunit.Name
-                    CodeunitId = $codeunit.ID
-                    Success = $true
-                    Message = "Test completed"
-                  })
-                }
-                catch {
-                  $null = $results.Add(@{
-                    CodeunitName = $codeunit.Name
-                    CodeunitId = $codeunit.ID
-                    Success = $false
-                    Message = $_.Exception.Message
-                  })
-                }
-              }
-              
-              return @{
-                Results = $results
-                TestResults = @{
-                  tests = $results.Count
-                  failures = ($results | Where-Object { -not $_.Success }).Count
-                  time = 0
-                }
-              }
-            } -argumentList $credential
-          }
-          catch {
-            Write-Host "Alternative approach also failed: $_"
-            Write-Host "::error::Failed to run tests in container"
-            exit 1
-          }
-        }
+        $testResults = Run-TestsInNavContainer `
+          -containerName "${{ inputs.container-name }}" `
+          -testSuite "DEFAULT" `
+          -credential $credential `
+          -detailed `
+          -tenant default
 
         if (-not $testResults) {
-          Write-Host "::error::No test results found! Please check if tests were executed correctly."
+          Write-Host "::error::No test results found!"
           exit 1
         }
 
-        Write-Host "Generating JUnit XML Test Results..."
-        $xml = New-Object System.Xml.XmlDocument
-        $testResultsNode = $xml.CreateElement("testsuites")
-        $xml.AppendChild($testResultsNode) | Out-Null
-
-        $testsuite = $xml.CreateElement("testsuite")
-        $testsuite.SetAttribute("name", "AL Test Suite")
-        $testsuite.SetAttribute("tests", $testResults.TestResults.tests)
-        $testsuite.SetAttribute("failures", $testResults.TestResults.failures)
-        $testsuite.SetAttribute("errors", "0")
-        $testsuite.SetAttribute("time", $testResults.TestResults.time)
-        $testResultsNode.AppendChild($testsuite) | Out-Null
-
-        foreach ($result in $testResults.Results) {
-          $testcase = $xml.CreateElement("testcase")
-          $testcase.SetAttribute("classname", $result.TestCodeunit)
-          $testcase.SetAttribute("name", $result.TestFunction)
-          $testcase.SetAttribute("time", $result.Duration)
-
-          if ($result.Result -ne "Success") {
-            $failure = $xml.CreateElement("failure")
-            $failure.SetAttribute("message", $result.Message)
-            $failure.InnerText = $result.Message
-            $testcase.AppendChild($failure) | Out-Null
-          }
-
-          $testsuite.AppendChild($testcase) | Out-Null
-        }
-
-        $outputPath = "${{ github.workspace }}/TestResults.xml"
-        $xml.Save($outputPath)
-
-        if ($testResults.TestResults.failures -gt 0) {
-          Write-Host "::error::$($testResults.TestResults.failures) test(s) failed"
-          exit 1
-        }
-
-        Write-Host "✅ All tests passed! Total: $($testResults.TestResults.tests), Failures: $($testResults.TestResults.failures), Time: $($testResults.TestResults.time) sec"
+        Write-Host "✅ Tests completed successfully."
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
