@@ -11,6 +11,9 @@ inputs:
   BC_PASSWORD:
     description: "Business Central password"
     required: true
+  Build_StagingDirectory:
+    description: "Path to the build staging directory."
+    required: true
 
 runs:
   using: "composite"
