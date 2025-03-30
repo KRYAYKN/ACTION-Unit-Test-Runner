@@ -30,6 +30,21 @@ runs:
         Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
+    - name: Ensure Test Toolkit is Installed
+      shell: pwsh
+      run: |
+        Write-Host "Checking if Test Toolkit is installed..."
+        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
+          $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
+          if (-not $testToolkit) {
+            Write-Host "⚠️ Test Toolkit not found. Installing..."
+            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" -includeTestLibrariesOnly
+            Write-Host "✅ Test Toolkit installed successfully."
+          } else {
+            Write-Host "✅ Test Toolkit is already installed."
+          }
+        }
+
     - name: Publish App to Container
       shell: pwsh
       run: |
