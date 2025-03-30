@@ -52,7 +52,7 @@ runs:
       shell: pwsh
       run: |
         Write-Host "Publishing app to container..."
-        $appPath = Get-ChildItem -Path "${{ github.workspace }}/Build_StagingDirectory" -Filter "*.app" | Select-Object -First 1
+        $appPath = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Filter "*.app" | Select-Object -First 1
         if (-not $appPath) {
           Write-Host "Error: No .app file found in the staging directory."
           exit 1
