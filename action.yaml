@@ -60,7 +60,7 @@ runs:
         Write-Host "Found app file: $($appPath.FullName)"
 
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($env:BC_USERNAME, $password)
+        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
         Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $appPath.FullName -sync -install
 
