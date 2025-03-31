@@ -69,6 +69,12 @@ runs:
       run: |
         Write-Host "Fetching available tests from container using Get-TestsFromNavContainer..."
         Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT"
+        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+
+        Get-TestsFromNavContainer `
+          -containerName "${{ inputs.container-name }}" `
+          -testSuite "DEFAULT" `
+          -credential $credential
 
     - name: Run AL Tests
       shell: pwsh
