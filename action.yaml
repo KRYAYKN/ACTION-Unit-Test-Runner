@@ -41,7 +41,7 @@ runs:
           $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
           if (-not $testToolkit) {
             Write-Host "⚠️ Test Toolkit not found. Installing..."
-            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" -includeTestLibrariesOnly
+            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" 
             Write-Host "✅ Test Toolkit installed successfully."
           } else {
             Write-Host "✅ Test Toolkit is already installed."
