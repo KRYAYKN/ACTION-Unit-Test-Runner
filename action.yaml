@@ -3,14 +3,17 @@ description: Runs AL unit tests on a Business Central container and reports resu
 
 inputs:
   container-name:
+    description: "Name of the Business Central container"
     required: true
   BC_USERNAME:
+    description: "Business Central username"
     required: true
   BC_PASSWORD:
+    description: "Business Central password"
     required: true
   Build_StagingDirectory:
+    description: "Path to the build staging directory."
     required: true
-
 runs:
   using: "composite"
   steps:
