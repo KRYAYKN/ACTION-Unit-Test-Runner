@@ -1,18 +1,14 @@
-name: "AL Unit Test Runner"
-description: "Runs AL unit tests on a Business Central container and reports results"
+name: AL Unit Test Runner
+description: Runs AL unit tests on a Business Central container and reports results
 
 inputs:
   container-name:
-    description: "Name of the Business Central container"
     required: true
   BC_USERNAME:
-    description: "Business Central username"
     required: true
   BC_PASSWORD:
-    description: "Business Central password"
     required: true
   Build_StagingDirectory:
-    description: "Path to the build staging directory."
     required: true
 
 runs:
@@ -25,71 +21,54 @@ runs:
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
         Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
-        Get-Module -ListAvailable BcContainerHelper
 
     - name: Check Container Status
       shell: pwsh
       run: |
-        Write-Host "Checking if container '${{ inputs.container-name }}' is running..."
         docker ps -a | Select-String '${{ inputs.container-name }}'
 
     - name: Ensure Test Toolkit is Installed
       shell: pwsh
       run: |
-        Write-Host "Checking if Test Toolkit is installed..."
         Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
           $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
           if (-not $testToolkit) {
             Write-Host "⚠️ Test Toolkit not found. Installing..."
-            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}" 
+            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}"
             Write-Host "✅ Test Toolkit installed successfully."
           } else {
             Write-Host "✅ Test Toolkit is already installed."
           }
         }
 
-    - name: Publish App to Container
+    - name: Publish Test App
       shell: pwsh
       run: |
-        Write-Host "Publishing app to container..."
-        $appPath = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Filter "*.app" | Select-Object -First 1
-        if (-not $appPath) {
-          Write-Host "Error: No .app file found in the staging directory."
+        $testAppPath = Join-Path "${{ inputs.Build_StagingDirectory }}" "test.app"
+        if (-not (Test-Path $testAppPath)) {
+          Write-Host "❌ test.app not found!"
           exit 1
         }
-        Write-Host "Found app file: $($appPath.FullName)"
-
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $appPath.FullName -sync -install -SkipVerification
+        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $testAppPath -sync -install -SkipVerification
 
     - name: Get Available Tests
       shell: pwsh
       run: |
-        Write-Host "Fetching available tests from container using Get-TestsFromNavContainer..."
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        Get-TestsFromNavContainer `
-          -containerName "${{ inputs.container-name }}" `
-          -testSuite "DEFAULT" `
-          -credential $credential
+        Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential
 
     - name: Run AL Tests
       shell: pwsh
       run: |
-        Write-Host "Running AL tests using Run-TestsInNavContainer..."
-
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        $testResults = Run-TestsInNavContainer `
-          -containerName "${{ inputs.container-name }}" `
-          -testSuite "DEFAULT" `
-          -credential $credential `
-          -detailed `
-          -tenant default
+        $testResults = Run-TestsInNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential -detailed -tenant default
 
         if (-not $testResults) {
           Write-Host "::error::No test results found!"
