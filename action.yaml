@@ -72,7 +72,7 @@ runs:
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
         Get-TestsFromBcContainer -containerName "BUSINESSCENTRAL-FORMULA-ERP-CONTAINER" -testSuite "DEFAULT" -credential $credential | Format-Table -AutoSize
-        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit "Customer List Ext Tests" -EnableTaskScheduler:$false -xUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
+        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit "Customer List Ext Tests" -xUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
 
         if (-not $testResults) {
           Write-Host "::error::No test results found!"
