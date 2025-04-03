@@ -92,7 +92,6 @@ runs:
           Write-Host "Customer List test codeunit bulunamadı. Tüm testler çalıştırılıyor..."
           $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
             -credential $credential -detailed -tenant default `
-            -EnableTaskScheduler:$false `
             -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
         }
 
