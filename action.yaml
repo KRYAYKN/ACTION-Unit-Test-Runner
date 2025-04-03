@@ -71,7 +71,8 @@ runs:
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit "Customer List Ext Tests" 
+        Get-TestsFromBcContainer -containerName "BUSINESSCENTRAL-FORMULA-ERP-CONTAINER" -testSuite "DEFAULT" -credential $credential | Format-Table -AutoSize
+        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit "Customer List Ext Tests" -EnableTaskScheduler:$false
 
         if (-not $testResults) {
           Write-Host "::error::No test results found!"
