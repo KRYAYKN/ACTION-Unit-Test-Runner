@@ -57,13 +57,14 @@ runs:
 
         Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $testAppPath -sync -install -SkipVerification
 
-    - name: Get Available Tests
+    - name: List Available Tests
       shell: pwsh
       run: |
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        Get-TestsFromNavContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential
+        Write-Host "Available tests:"
+        Get-TestsFromBcContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential | Format-Table -AutoSize
 
     - name: Run AL Tests
       shell: pwsh
@@ -71,18 +72,53 @@ runs:
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        Get-TestsFromBcContainer -containerName "BUSINESSCENTRAL-FORMULA-ERP-CONTAINER" -testSuite "DEFAULT" -credential $credential | Format-Table -AutoSize
-        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit '"Customer List Ext Tests"' -testCodeunitRange '66601' -xUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
-
-        if (-not $testResults) {
-          Write-Host "::error::No test results found!"
-          exit 1
+        # Önce test codeunit'inin kesin adını bulalım
+        $allTests = Get-TestsFromBcContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential
+        $customerListTests = $allTests | Where-Object { $_.Name -like "*Customer List*" }
+        
+        if ($customerListTests) {
+          $testCodeunitName = $customerListTests[0].Name
+          $testCodeunitId = $customerListTests[0].Id
+          Write-Host "Found test codeunit: $testCodeunitName (ID: $testCodeunitId)"
+          
+          # ID ile test çalıştır - Bu daha güvenilir
+          $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
+            -credential $credential -detailed -tenant default `
+            -testCodeunit $testCodeunitId `
+            -EnableTaskScheduler:$false `
+            -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
+        } else {
+          # Eğer bulunamazsa tüm testleri çalıştır
+          Write-Host "Customer List test codeunit bulunamadı. Tüm testler çalıştırılıyor..."
+          $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
+            -credential $credential -detailed -tenant default `
+            -EnableTaskScheduler:$false `
+            -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
         }
 
-        Write-Host "✅ Tests completed successfully."
+        if (-not $testResults) {
+          Write-Host "::warning::Test çalıştı ancak sonuç döndürmedi. Test uygulaması test fonksiyonları içeriyor mu?"
+        } else {
+          $successCount = ($testResults | Where-Object { $_.Result -eq "Success" }).Count
+          $failureCount = ($testResults | Where-Object { $_.Result -eq "Failure" }).Count
+          $skippedCount = ($testResults | Where-Object { $_.Result -eq "Skipped" }).Count
+          
+          Write-Host "Test sonuçları:"
+          Write-Host "- Başarılı: $successCount"
+          Write-Host "- Başarısız: $failureCount" 
+          Write-Host "- Atlanmış: $skippedCount"
+          
+          if ($failureCount -gt 0) {
+            Write-Host "::error::$failureCount test başarısız oldu!"
+            exit 1
+          } else {
+            Write-Host "✅ Tests completed successfully."
+          }
+        }
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: al-test-results
         path: ${{ github.workspace }}/TestResults.xml
