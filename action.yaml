@@ -71,7 +71,7 @@ runs:
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default 
+        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" -credential $credential -detailed -tenant default -testCodeunit "Customer List Ext Tests" 
 
         if (-not $testResults) {
           Write-Host "::error::No test results found!"
