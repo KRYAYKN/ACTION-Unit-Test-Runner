@@ -1,4 +1,5 @@
 name: AL Unit Test Runner
+
 description: Runs AL unit tests on a Business Central container and reports results
 
 inputs:
@@ -14,6 +15,7 @@ inputs:
   Build_StagingDirectory:
     description: "Path to the build staging directory."
     required: true
+
 runs:
   using: "composite"
   steps:
@@ -47,24 +49,32 @@ runs:
     - name: Publish Test App
       shell: pwsh
       run: |
-        $testAppPath = Join-Path "${{ inputs.Build_StagingDirectory }}" "test.app"
-        if (-not (Test-Path $testAppPath)) {
-          Write-Host "❌ test.app not found!"
+        # Dizin içindeki .app dosyasını bul
+        $testApp = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Filter '*.app' | Select-Object -First 1
+
+        if (-not $testApp) {
+          Write-Host "❌ Test .app dosyası bulunamadı!"
           exit 1
         }
+
+        Write-Host "✅ Test app bulundu: $($testApp.FullName)"
+
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" -credential $credential -appFile $testAppPath -sync -install -SkipVerification
+        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" `
+          -credential $credential `
+          -appFile $testApp.FullName `
+          -sync -install -SkipVerification
 
-    - name: List Available Tests
+    - name: Validate App Installation & Debug Info
       shell: pwsh
       run: |
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+        Write-Host "📦 Yayınlanan uygulamalar:"
+        Get-BcContainerAppInfo -containerName "${{ inputs.container-name }}" | Format-Table Name, Publisher, Version, IsInstalled, IsPublished
 
-        Write-Host "Available tests:"
-        Get-TestsFromBcContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential | Format-Table -AutoSize
+        Write-Host "🔍 Container'daki test fonksiyonları:"
+        Get-BcContainerTestFunctions -containerName "${{ inputs.container-name }}" | Format-Table FunctionName, CodeunitId, CodeunitName
 
     - name: Run AL Tests
       shell: pwsh
@@ -72,47 +82,29 @@ runs:
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
-        # Önce test codeunit'inin kesin adını bulalım
-        $allTests = Get-TestsFromBcContainer -containerName "${{ inputs.container-name }}" -testSuite "DEFAULT" -credential $credential
-        $customerListTests = $allTests | Where-Object { $_.Name -like "*Customer List*" }
-        
-        if ($customerListTests) {
-          $testCodeunitName = $customerListTests[0].Name
-          $testCodeunitId = $customerListTests[0].Id
-          Write-Host "Found test codeunit: $testCodeunitName (ID: $testCodeunitId)"
-          
-          # ID ile test çalıştır - Bu daha güvenilir
-          $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
-            -credential $credential -detailed -tenant default `
-            -testCodeunit $testCodeunitId `
-            -EnableTaskScheduler:$false `
-            -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
-        } else {
-          # Eğer bulunamazsa tüm testleri çalıştır
-          Write-Host "Customer List test codeunit bulunamadı. Tüm testler çalıştırılıyor..."
-          $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
-            -credential $credential -detailed -tenant default `
-            -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
+        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
+          -credential $credential -detailed -tenant default `
+          -XUnitResultFileName "$env:GITHUB_WORKSPACE/TestResults.xml"
+
+        if (-not $testResults -or $testResults.Count -eq 0) {
+          Write-Host "::error::Hiç test sonucu döndürülmedi! Test app'inde test fonksiyonları var mı?"
+          exit 1
         }
 
-        if (-not $testResults) {
-          Write-Host "::warning::Test çalıştı ancak sonuç döndürmedi. Test uygulaması test fonksiyonları içeriyor mu?"
+        $successCount = ($testResults | Where-Object { $_.Result -eq "Success" }).Count
+        $failureCount = ($testResults | Where-Object { $_.Result -eq "Failure" }).Count
+        $skippedCount = ($testResults | Where-Object { $_.Result -eq "Skipped" }).Count
+
+        Write-Host "📊 Test sonuçları:"
+        Write-Host "- Başarılı: $successCount"
+        Write-Host "- Başarısız: $failureCount"
+        Write-Host "- Atlanmış: $skippedCount"
+
+        if ($failureCount -gt 0) {
+          Write-Host "::error::$failureCount test başarısız oldu!"
+          exit 1
         } else {
-          $successCount = ($testResults | Where-Object { $_.Result -eq "Success" }).Count
-          $failureCount = ($testResults | Where-Object { $_.Result -eq "Failure" }).Count
-          $skippedCount = ($testResults | Where-Object { $_.Result -eq "Skipped" }).Count
-          
-          Write-Host "Test sonuçları:"
-          Write-Host "- Başarılı: $successCount"
-          Write-Host "- Başarısız: $failureCount" 
-          Write-Host "- Atlanmış: $skippedCount"
-          
-          if ($failureCount -gt 0) {
-            Write-Host "::error::$failureCount test başarısız oldu!"
-            exit 1
-          } else {
-            Write-Host "✅ Tests completed successfully."
-          }
+          Write-Host "✅ Tests completed successfully."
         }
 
     - name: Upload Test Results
