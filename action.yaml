@@ -49,8 +49,7 @@ runs:
     - name: Publish Test App
       shell: pwsh
       run: |
-        # Dizin içindeki .app dosyasını bul
-        $testApp = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Filter '*.app' | Select-Object -First 1
+        $testApp = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Recurse -Filter '*Test*.app' | Select-Object -First 1
 
         if (-not $testApp) {
           Write-Host "❌ Test .app dosyası bulunamadı!"
@@ -72,9 +71,6 @@ runs:
       run: |
         Write-Host "📦 Yayınlanan uygulamalar:"
         Get-BcContainerAppInfo -containerName "${{ inputs.container-name }}" | Format-Table Name, Publisher, Version, IsInstalled, IsPublished
-
-        Write-Host "🔍 Container'daki test fonksiyonları:"
-        Get-BcContainerTestFunctions -containerName "${{ inputs.container-name }}" | Format-Table FunctionName, CodeunitId, CodeunitName
 
     - name: Run AL Tests
       shell: pwsh
