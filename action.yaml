@@ -85,12 +85,15 @@ runs:
           exit 1
         }
 
-        $tenant = $tenants[0]
+        $tenant = $tenants[0].Id
         Write-Host "🔍 Kullanılacak tenant: $tenant"
+
+        # Container ile paylaşılmış bir klasöre test sonucu yaz
+        $xunitPath = "c:\\sources\\TestResults.xml"
 
         $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
           -credential $credential -detailed -tenant $tenant `
-          -XUnitResultFileName "$env:GITHUB_WORKSPACE/TestResults.xml"
+          -XUnitResultFileName $xunitPath
 
         if (-not $testResults -or $testResults.Count -eq 0) {
           Write-Host "::error::Hiç test sonucu döndürülmedi! Test app'inde test fonksiyonları var mı?"
@@ -112,6 +115,8 @@ runs:
         } else {
           Write-Host "✅ Tests completed successfully."
         }
+
+        Copy-Item -Path $xunitPath -Destination "$env:GITHUB_WORKSPACE\TestResults.xml" -Force
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
