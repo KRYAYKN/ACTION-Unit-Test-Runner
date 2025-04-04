@@ -78,6 +78,7 @@ runs:
         $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
 
+        # Aktif tenant bilgisini al
         $tenants = Get-BcContainerTenants -containerName "${{ inputs.container-name }}"
         if (-not $tenants -or $tenants.Count -eq 0) {
           Write-Host "::error::Hiç tenant bulunamadı!"
@@ -87,9 +88,9 @@ runs:
         $tenant = $tenants[0].Id
         Write-Host "🔍 Kullanılacak tenant: $tenant"
 
-        # Test sonucu hem container içinden hem host üzerinden erişilebilir olacak şekilde
-        $containerTestResultsPath = "C:\Run\TestResults.xml"
-        $hostTestResultsPath = "C:\ProgramData\BcContainerHelper\Extensions\${{ inputs.container-name }}\TestResults.xml"
+        # Test sonuç dosyası hem container hem host ile paylaşılan bir klasöre yazılmalı
+        $containerTestResultsPath = "C:\\Run\\TestResults.xml"
+        $hostTestResultsPath = "C:\\ProgramData\\BcContainerHelper\\Extensions\\${{ inputs.container-name }}\\TestResults.xml"
 
         $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
           -credential $credential -detailed -tenant $tenant `
@@ -117,7 +118,6 @@ runs:
         }
 
         Copy-Item -Path $hostTestResultsPath -Destination "$env:GITHUB_WORKSPACE\TestResults.xml" -Force
-
 
     - name: Upload Test Results
       uses: actions/upload-artifact@v4
