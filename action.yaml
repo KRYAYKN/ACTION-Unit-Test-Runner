@@ -1,128 +1,44 @@
-name: AL Unit Test Runner
-
-description: Runs AL unit tests on a Business Central container and reports results
+name: AL SaaS Unit Test Runner
+description: Runs AL tests on a Business Central SaaS Sandbox environment.
 
 inputs:
-  container-name:
-    description: "Name of the Business Central container"
+  CONTAINERNAME:
+    description: 'Proxy container name (FilesOnly)'
     required: true
-  BC_USERNAME:
-    description: "Business Central username"
+  TENANT_ID:
+    description: 'Azure AD Tenant ID'
     required: true
-  BC_PASSWORD:
-    description: "Business Central password"
+  ENVIRONMENT:
+    description: 'Business Central environment name'
     required: true
-  Build_StagingDirectory:
-    description: "Path to the build staging directory."
+  REFRESH_TOKEN:
+    description: 'Refresh token for authentication'
+    required: true
+  TEST_APP_NAME:
+    description: 'Display name of the test app'
     required: true
 
 runs:
-  using: "composite"
+  using: composite
   steps:
     - name: Install BcContainerHelper
-      shell: powershell
-      run: |
-        Write-Host "Installing BcContainerHelper module..."
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-        Install-Module BcContainerHelper -Force -SkipPublisherCheck -AllowClobber
-
-    - name: Check Container Status
       shell: pwsh
       run: |
-        docker ps -a | Select-String '${{ inputs.container-name }}'
+        Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
 
-    - name: Ensure Test Toolkit is Installed
+    - name: Run Tests in SaaS Environment
       shell: pwsh
       run: |
-        Invoke-ScriptInBcContainer -containerName "${{ inputs.container-name }}" -scriptblock {
-          $testToolkit = Get-NAVAppInfo -ServerInstance BC | Where-Object { $_.Name -eq 'Test Runner' }
-          if (-not $testToolkit) {
-            Write-Host "⚠️ Test Toolkit not found. Installing..."
-            Import-TestToolkitToBcContainer -containerName "${{ inputs.container-name }}"
-            Write-Host "✅ Test Toolkit installed successfully."
-          } else {
-            Write-Host "✅ Test Toolkit is already installed."
-          }
-        }
-
-    - name: Publish Test App
-      shell: pwsh
-      run: |
-        $testApp = Get-ChildItem -Path "${{ inputs.Build_StagingDirectory }}" -Recurse -Filter '*Test*.app' | Select-Object -First 1
-
+        $authContext = New-BcAuthContext -tenantId '${{ inputs.TENANT_ID }}' -refreshToken '${{ inputs.REFRESH_TOKEN }}'
+        $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' | Where-Object { $_.DisplayName -eq '${{ inputs.TEST_APP_NAME }}' }
         if (-not $testApp) {
-          Write-Host "❌ Test .app dosyası bulunamadı!"
+          Write-Error 'Test app not found in the environment'
           exit 1
         }
-
-        Write-Host "✅ Test app bulundu: $($testApp.FullName)"
-
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-
-        Publish-BcContainerApp -containerName "${{ inputs.container-name }}" `
-          -credential $credential `
-          -appFile $testApp.FullName `
-          -sync -install -SkipVerification
-
-    - name: Validate App Installation & Debug Info
-      shell: pwsh
-      run: |
-        Write-Host "📦 Yayınlanan uygulamalar:"
-        Get-BcContainerAppInfo -containerName "${{ inputs.container-name }}" | Format-Table Name, Publisher, Version, IsInstalled, IsPublished
-
-    - name: Run AL Tests
-      shell: pwsh
-      run: |
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-
-        # Aktif tenant bilgisini al
-        $tenants = Get-BcContainerTenants -containerName "${{ inputs.container-name }}"
-        if (-not $tenants -or $tenants.Count -eq 0) {
-          Write-Host "::error::Hiç tenant bulunamadı!"
-          exit 1
-        }
-
-        $tenant = $tenants[0].Id
-        Write-Host "🔍 Kullanılacak tenant: $tenant"
-
-        # Test sonuç dosyası hem container hem host ile paylaşılan bir klasöre yazılmalı
-        $containerTestResultsPath = "C:\\Run\\TestResults.xml"
-        $hostTestResultsPath = "C:\\ProgramData\\BcContainerHelper\\Extensions\\${{ inputs.container-name }}\\TestResults.xml"
-
-        $testResults = Run-TestsInBcContainer -containerName "${{ inputs.container-name }}" `
-          -credential $credential -detailed -tenant $tenant `
-          -XUnitResultFileName $containerTestResultsPath
-
-        if (-not $testResults -or $testResults.Count -eq 0) {
-          Write-Host "::error::Hiç test sonucu döndürülmedi! Test app'inde test fonksiyonları var mı?"
-          exit 1
-        }
-
-        $successCount = ($testResults | Where-Object { $_.Result -eq "Success" }).Count
-        $failureCount = ($testResults | Where-Object { $_.Result -eq "Failure" }).Count
-        $skippedCount = ($testResults | Where-Object { $_.Result -eq "Skipped" }).Count
-
-        Write-Host "📊 Test sonuçları:"
-        Write-Host "- Başarılı: $successCount"
-        Write-Host "- Başarısız: $failureCount"
-        Write-Host "- Atlanmış: $skippedCount"
-
-        if ($failureCount -gt 0) {
-          Write-Host "::error::$failureCount test başarısız oldu!"
-          exit 1
-        } else {
-          Write-Host "✅ Tests completed successfully."
-        }
-
-        Copy-Item -Path $hostTestResultsPath -Destination "$env:GITHUB_WORKSPACE\TestResults.xml" -Force
-
-    - name: Upload Test Results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: al-test-results
-        path: ${{ github.workspace }}/TestResults.xml
-        retention-days: 30
+        Run-TestsInBcContainer `
+          -containerName '${{ inputs.CONTAINERNAME }}' `
+          -bcAuthContext $authContext `
+          -environment '${{ inputs.ENVIRONMENT }}' `
+          -extensionId $testApp.Id `
+          -detailed `
+          -XUnitResultFileName "$env:GITHUB_WORKSPACE\\TestResults.xml"
