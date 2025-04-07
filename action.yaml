@@ -14,6 +14,9 @@ inputs:
   REFRESH_TOKEN:
     description: 'Refresh token for authentication'
     required: true
+  ARTIFACTS_DIRECTORY:
+    description: 'Directory where the test.app is located'
+    required: true
 
 runs:
   using: composite
@@ -23,11 +26,12 @@ runs:
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
 
-    - name: Get Test App Display Name from app.json
+    - name: Get Test App Display Name from .app file
       shell: pwsh
       run: |
-        $testAppJson = Get-Content "src/Test/app.json" | ConvertFrom-Json
-        "TEST_APP_NAME=$($testAppJson.name)" >> $env:GITHUB_ENV
+        $testAppPath = Join-Path '${{ inputs.ARTIFACTS_DIRECTORY }}' 'test.app'
+        $appInfo = Get-AppJsonFromAppFile -appFile $testAppPath
+        "TEST_APP_NAME=$($appInfo.Name)" >> $env:GITHUB_ENV
 
     - name: Run Tests in SaaS Environment
       shell: pwsh
@@ -44,4 +48,4 @@ runs:
           -environment '${{ inputs.ENVIRONMENT }}' `
           -extensionId $testApp.Id `
           -detailed `
-          -XUnitResultFileName "$env:GITHUB_WORKSPACE\\TestResults.xml"
+          -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
