@@ -14,9 +14,6 @@ inputs:
   REFRESH_TOKEN:
     description: 'Refresh token for authentication'
     required: true
-  TEST_APP_NAME:
-    description: 'Display name of the test app'
-    required: true
 
 runs:
   using: composite
@@ -25,21 +22,20 @@ runs:
       shell: pwsh
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
-    
-    - name: Get Test App Display Name from .app file
+
+    - name: Get Test App Display Name from app.json
       shell: pwsh
       run: |
-        $testAppPath = "${{ github.workspace }}\Artifacts\test.app"
-        $appInfo = Get-AppJsonFromAppFile -appFile $testAppPath
-        "TEST_APP_NAME=$($appInfo.Name)" >> $env:GITHUB_ENV
+        $testAppJson = Get-Content "src/Test/app.json" | ConvertFrom-Json
+        "TEST_APP_NAME=$($testAppJson.name)" >> $env:GITHUB_ENV
 
     - name: Run Tests in SaaS Environment
       shell: pwsh
       run: |
         $authContext = New-BcAuthContext -tenantId '${{ inputs.TENANT_ID }}' -refreshToken '${{ inputs.REFRESH_TOKEN }}'
-        $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' | Where-Object { $_.DisplayName -eq '${{ inputs.TEST_APP_NAME }}' }
+        $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' | Where-Object { $_.DisplayName -eq $env:TEST_APP_NAME }
         if (-not $testApp) {
-          Write-Error 'Test app not found in the environment'
+          Write-Error "❌ Test app '$($env:TEST_APP_NAME)' not found in the environment '${{ inputs.ENVIRONMENT }}'"
           exit 1
         }
         Run-TestsInBcContainer `
