@@ -25,6 +25,13 @@ runs:
       shell: pwsh
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
+    
+    - name: Get Test App Display Name from .app file
+      shell: pwsh
+      run: |
+        $testAppPath = "${{ github.workspace }}\Artifacts\test.app"
+        $appInfo = Get-AppJsonFromAppFile -appFile $testAppPath
+        "TEST_APP_NAME=$($appInfo.Name)" >> $env:GITHUB_ENV
 
     - name: Run Tests in SaaS Environment
       shell: pwsh
