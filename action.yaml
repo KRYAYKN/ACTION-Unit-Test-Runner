@@ -22,6 +22,26 @@ runs:
       shell: pwsh
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
+    - name: Create FilesOnly Proxy Container
+      shell: pwsh
+      run: |
+        $containerName = '${{ inputs.CONTAINERNAME }}'
+        $container = Get-BcContainer -containerName $containerName -ErrorAction SilentlyContinue
+        if (-not $container) {
+          New-BcContainer `
+            -accept_eula `
+            -containerName $containerName `
+            -imageName "mcr.microsoft.com/businesscentral/sandbox:latest" `
+            -isolation process `
+            -auth NavUserPassword `
+            -updateHosts `
+            -shortcuts None `
+            -includeAL `
+            -doNotCheckHealth `
+            -filesOnly
+        } else {
+          Write-Host "✅ Container '$containerName' already exists."
+        }
 
     - name: Run Tests in SaaS Environment
       shell: pwsh
