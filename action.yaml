@@ -1,4 +1,5 @@
 name: AL SaaS Unit Test Runner
+
 description: Runs AL tests on a Business Central SaaS Sandbox environment.
 
 inputs:
@@ -18,17 +19,19 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install BcContainerHelper
+    - name: Install and Import BcContainerHelper
       shell: pwsh
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
-        Import-Module BcContainerHelper -Force
-    - name: Create FilesOnly Proxy Container
+        Import-Module BcContainerHelper
+
+    - name: Create FilesOnly Proxy Container if not exists
       shell: pwsh
       run: |
         $containerName = '${{ inputs.CONTAINERNAME }}'
-        $container = Get-BcContainer -containerName $containerName -ErrorAction SilentlyContinue
-        if (-not $container) {
+        $exists = docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }
+        if (-not $exists) {
+          Write-Host "Creating FilesOnly container..."
           New-BcContainer `
             -accept_eula `
             -containerName $containerName `
@@ -51,7 +54,7 @@ runs:
         $testAppPublisher = 'pargesoft'
 
         $authContext = New-BcAuthContext -tenantId '${{ inputs.TENANT_ID }}' -refreshToken '${{ inputs.REFRESH_TOKEN }}'
-        
+
         $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' |
           Where-Object { $_.DisplayName -eq $testAppName -and $_.Publisher -eq $testAppPublisher }
 
