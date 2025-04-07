@@ -14,9 +14,6 @@ inputs:
   REFRESH_TOKEN:
     description: 'Refresh token for authentication'
     required: true
-  ARTIFACTS_DIRECTORY:
-    description: 'Directory where the test.app is located'
-    required: true
 
 runs:
   using: composite
@@ -26,22 +23,22 @@ runs:
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
 
-    - name: Get Test App Display Name from .app file
-      shell: pwsh
-      run: |
-        $testAppPath = Join-Path '${{ inputs.ARTIFACTS_DIRECTORY }}' 'test.app'
-        $appInfo = Get-AppJsonFromAppFile -appFile $testAppPath
-        "TEST_APP_NAME=$($appInfo.Name)" >> $env:GITHUB_ENV
-
     - name: Run Tests in SaaS Environment
       shell: pwsh
       run: |
+        $testAppName = 'Saint-gobain Test'
+        $testAppPublisher = 'pargesoft'
+
         $authContext = New-BcAuthContext -tenantId '${{ inputs.TENANT_ID }}' -refreshToken '${{ inputs.REFRESH_TOKEN }}'
-        $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' | Where-Object { $_.DisplayName -eq $env:TEST_APP_NAME }
+        
+        $testApp = Get-BcInstalledExtensions -bcAuthContext $authContext -environment '${{ inputs.ENVIRONMENT }}' |
+          Where-Object { $_.DisplayName -eq $testAppName -and $_.Publisher -eq $testAppPublisher }
+
         if (-not $testApp) {
-          Write-Error "❌ Test app '$($env:TEST_APP_NAME)' not found in the environment '${{ inputs.ENVIRONMENT }}'"
+          Write-Error "❌ Test app '$testAppName' by publisher '$testAppPublisher' not found in the environment '${{ inputs.ENVIRONMENT }}'"
           exit 1
         }
+
         Run-TestsInBcContainer `
           -containerName '${{ inputs.CONTAINERNAME }}' `
           -bcAuthContext $authContext `
