@@ -73,7 +73,6 @@ runs:
           -extensionId $testApp.Id `
           -detailed `
           -XUnitResultFileName $xunitPath `
-          -useSsl:$true `
           -disableSSLVerification `
           -debug
 
