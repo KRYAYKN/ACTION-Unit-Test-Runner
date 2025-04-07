@@ -73,3 +73,4 @@ runs:
           -extensionId $testApp.Id `
           -detailed `
           -XUnitResultFileName $xunitPath
+          -debug
