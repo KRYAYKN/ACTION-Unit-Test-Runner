@@ -73,6 +73,5 @@ runs:
           -extensionId $testApp.Id `
           -detailed `
           -XUnitResultFileName $xunitPath `
-          -disableSSLVerification `
           -debug
 
