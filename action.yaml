@@ -25,17 +25,18 @@ runs:
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
         Import-Module BcContainerHelper
 
-    - name: Create FilesOnly Proxy Container if not exists
+    - name: Create FilesOnly Proxy Container
       shell: pwsh
       run: |
         $containerName = '${{ inputs.CONTAINERNAME }}'
         $exists = docker ps -a --format '{{.Names}}' | Where-Object { $_ -eq $containerName }
         if (-not $exists) {
           Write-Host "Creating FilesOnly container..."
+          $artifactUrl = Get-BCArtifactUrl -type Sandbox -country w1
           New-BcContainer `
             -accept_eula `
             -containerName $containerName `
-            -imageName "mcr.microsoft.com/businesscentral/sandbox:latest" `
+            -artifactUrl $artifactUrl `
             -isolation process `
             -auth NavUserPassword `
             -updateHosts `
