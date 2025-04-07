@@ -22,6 +22,7 @@ runs:
       shell: pwsh
       run: |
         Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
+        Import-Module BcContainerHelper -Force
     - name: Create FilesOnly Proxy Container
       shell: pwsh
       run: |
