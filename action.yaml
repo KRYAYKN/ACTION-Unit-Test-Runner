@@ -21,7 +21,7 @@ runs:
     - name: Install and Import BcContainerHelper
       shell: pwsh
       run: |
-        Install-Module BcContainerHelper -Force -AllowClobber -SkipPublisherCheck
+        Install-Module BcContainerHelper -Force -AllowClobber -Scope CurrentUser
         Import-Module BcContainerHelper
 
     - name: Create FilesOnly Proxy Container
@@ -67,10 +67,13 @@ runs:
         $xunitPath = Join-Path $sharedPath "TestResults.xml"
 
         Run-TestsInBcContainer `
-          -containerName '${{ inputs.CONTAINERNAME }}' `
+          -containerName 'filesonly' `
           -bcAuthContext $authContext `
           -environment '${{ inputs.ENVIRONMENT }}' `
           -extensionId $testApp.Id `
           -detailed `
-          -XUnitResultFileName $xunitPath
+          -XUnitResultFileName $xunitPath `
+          -useSsl:$true `
+          -disableSSLVerification `
           -debug
+
