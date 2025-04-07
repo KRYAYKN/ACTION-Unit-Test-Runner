@@ -1,5 +1,4 @@
 name: AL SaaS Unit Test Runner
-
 description: Runs AL tests on a Business Central SaaS Sandbox environment.
 
 inputs:
@@ -64,10 +63,13 @@ runs:
           exit 1
         }
 
+        $sharedPath = "C:\ProgramData\BcContainerHelper\Extensions\${{ inputs.CONTAINERNAME }}\My"
+        $xunitPath = Join-Path $sharedPath "TestResults.xml"
+
         Run-TestsInBcContainer `
           -containerName '${{ inputs.CONTAINERNAME }}' `
           -bcAuthContext $authContext `
           -environment '${{ inputs.ENVIRONMENT }}' `
           -extensionId $testApp.Id `
           -detailed `
-          -XUnitResultFileName "$env:GITHUB_WORKSPACE\TestResults.xml"
+          -XUnitResultFileName $xunitPath
